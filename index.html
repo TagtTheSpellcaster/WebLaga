@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WebLaga - Classic Arcade Clone</title>
+    <!-- Tailwind CSS for UI layout and styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Pixel Font for authentic arcade feel -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Press Start 2P', monospace, cursive;
+            background-color: #050508;
+            color: #fff;
+            cursor: none;
+        }
+        .show-cursor {
+            cursor: default !important;
+        }
+        /* CRT Screen Scanline & Glow Effect */
+        .crt-container {
+            position: relative;
+            box-shadow: 0 0 50px rgba(0, 150, 255, 0.2), inset 0 0 100px rgba(0, 0, 0, 0.8);
+        }
+        .crt-container::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            z-index: 20;
+            background-size: 100% 3px, 6px 100%;
+            pointer-events: none;
+        }
+        canvas {
+            image-rendering: pixelated;
+            background: #000005;
+        }
+        /* Pulse Animation for Arcade Text */
+        @keyframes pulse-fast {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .blink {
+            animation: pulse-fast 0.8s infinite;
+        }
+        /* Custom scrollbar hidden */
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-2 sm:p-4">
+
+    <!-- Arcade Cabinet Wrapper -->
+    <div class="relative w-full max-w-xl crt-container border-4 sm:border-8 border-gray-800 rounded-2xl overflow-hidden bg-black flex flex-col items-center shadow-2xl">
+        
+        <!-- Arcade Top Header Bar -->
+        <div class="w-full bg-gradient-to-r from-red-900 via-blue-900 to-red-900 p-2 sm:p-3 border-b-4 border-yellow-500 text-center flex justify-between items-center z-10">
+            <div class="text-left text-[10px] sm:text-xs">
+                <span class="text-red-500 block">1UP</span>
+                <span id="score-display" class="text-white">00</span>
+            </div>
+            <div class="text-center">
+                <span class="text-yellow-400 text-xs sm:text-sm tracking-widest block font-bold">WEBLAGA</span>
+                <span id="stage-display" class="text-cyan-400 text-[9px] sm:text-[10px]">STAGE 1</span>
+            </div>
+            <div class="text-right text-[10px] sm:text-xs">
+                <span class="text-red-500 block">HIGH</span>
+                <span id="highscore-display" class="text-white">00</span>
+            </div>
+        </div>
+
+        <!-- Game Canvas Container -->
+        <div class="relative w-full aspect-[3/4] flex items-center justify-center overflow-hidden">
+            <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+
+            <!-- Touch Overlay Controls (Visible on mobile or toggleable) -->
+            <div id="touch-controls" class="absolute inset-0 z-30 pointer-events-none flex flex-col justify-between p-4 hidden">
+                <!-- Top Status Bar overlay for Pause/Mute -->
+                <div class="flex justify-between items-center pointer-events-auto">
+                    <button id="btn-audio" class="bg-gray-800/80 hover:bg-gray-700 text-yellow-400 p-2 rounded-lg border border-yellow-500 text-xs">
+                        <i class="fa-solid fa-volume-high"></i>
+                    </button>
+                    <button id="btn-pause" class="bg-gray-800/80 hover:bg-gray-700 text-cyan-400 p-2 rounded-lg border border-cyan-500 text-xs">
+                        <i class="fa-solid fa-pause"></i>
+                    </button>
+                </div>
+                <!-- Bottom Touch Buttons -->
+                <div class="flex justify-between items-end w-full pointer-events-auto pb-2">
+                    <div class="flex gap-2">
+                        <button id="btn-left" class="bg-blue-600/60 active:bg-blue-500 text-white w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-blue-300 text-xl flex items-center justify-center select-none">
+                            <i class="fa-solid fa-arrow-left"></i>
+                        </button>
+                        <button id="btn-right" class="bg-blue-600/60 active:bg-blue-500 text-white w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-blue-300 text-xl flex items-center justify-center select-none">
+                            <i class="fa-solid fa-arrow-right"></i>
+                        </button>
+                    </div>
+                    <button id="btn-fire" class="bg-red-600/70 active:bg-red-500 text-white w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-red-300 text-xl font-bold flex items-center justify-center select-none shadow-lg">
+                        FIRE
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Arcade Bottom Status / Gamepad Indicator -->
+        <div class="w-full bg-gray-950 p-2 border-t-2 border-gray-800 flex justify-between items-center text-[9px] sm:text-[10px] text-gray-400 z-10">
+            <div id="lives-container" class="flex gap-1 items-center">
+                <!-- Lives icons rendered dynamically -->
+            </div>
+            <div id="gamepad-status" class="flex items-center gap-1 text-gray-500">
+                <i class="fa-solid fa-gamepad"></i> <span id="gamepad-text">NO GAMEPAD</span>
+            </div>
+            <div class="text-right">
+                <button id="toggle-touch-btn" class="text-cyan-400 underline">TOUCH BTNS</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Instructions / Footer -->
+    <div class="mt-3 text-center text-gray-400 text-[10px] sm:text-xs max-w-xl leading-relaxed">
+        <p class="hidden sm:block"><span class="text-yellow-400">KEYBOARD:</span> [A/D] or [←/→] Move | [SPACE] Shoot | [ENTER] Pause/Restart</p>
+        <p><span class="text-yellow-400">MOUSE/TOUCH:</span> Drag horizontally to move, Click/Tap to shoot.</p>
+        <p><span class="text-yellow-400">GAMEPAD:</span> Left Stick/D-Pad to move, [A] / [RT] to shoot.</p>
+    </div>
+
+    <script>
+        /**
+         * GALAGA RETRO ARCADE CLONE
+         * Single-file HTML5 Engine using Canvas 2D & Web Audio API
+         */
+
+        // --- Sound Engine (Web Audio API) ---
+        class AudioEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playLaser() {
+                if (this.muted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(880, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(110, this.ctx.currentTime + 0.12);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.12);
+            }
+
+            playExplosion(isLarge = false) {
+                if (this.muted || !this.ctx) return;
+                const bufferSize = this.ctx.sampleRate * (isLarge ? 0.4 : 0.2);
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(isLarge ? 400 : 800, this.ctx.currentTime);
+                filter.frequency.linearRampToValueAtTime(50, this.ctx.currentTime + (isLarge ? 0.4 : 0.2));
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + (isLarge ? 0.4 : 0.2));
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                noise.start();
+            }
+
+            playEnemyDive() {
+                if (this.muted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(800, this.ctx.currentTime + 0.2);
+                osc.frequency.linearRampToValueAtTime(300, this.ctx.currentTime + 0.5);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.5);
+            }
+
+            playStageStart() {
+                if (this.muted || !this.ctx) return;
+                const notes = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
+                notes.forEach((freq, index) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.2, this.ctx.currentTime + index * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + index * 0.1 + 0.15);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(this.ctx.currentTime + index * 0.1);
+                    osc.stop(this.ctx.currentTime + index * 0.1 + 0.15);
+                });
+            }
+        }
+
+        const audio = new AudioEngine();
+
+        // --- Game Setup & Canvas Logic ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Internal logical resolution (Classic Arcade 3:4 aspect ratio)
+        const CANVAS_WIDTH = 360;
+        const CANVAS_HEIGHT = 480;
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+
+        // Game States
+        const STATES = { TITLE: 0, PLAYING: 1, PAUSED: 2, GAMEOVER: 3 };
+        let gameState = STATES.TITLE;
+
+        // Global Variables
+        let score = 0;
+        let highscore = parseInt(localStorage.getItem('galaga_highscore') || '0', 10);
+        let stage = 1;
+        let lives = 3;
+        let starfield = [];
+        let player = null;
+        let playerBullets = [];
+        let enemyBullets = [];
+        let enemies = [];
+        let particles = [];
+        let floatingTexts = [];
+        let stageIntroTimer = 0;
+        let formationComplete = false;
+
+        // DOM Elements
+        const scoreEl = document.getElementById('score-display');
+        const highscoreEl = document.getElementById('highscore-display');
+        const stageEl = document.getElementById('stage-display');
+        const livesContainer = document.getElementById('lives-container');
+        const gamepadStatusEl = document.getElementById('gamepad-text');
+        const touchControls = document.getElementById('touch-controls');
+        const toggleTouchBtn = document.getElementById('toggle-touch-btn');
+
+        highscoreEl.innerText = highscore.toString().padStart(2, '0');
+
+        // --- Input Handler ---
+        const keys = { left: false, right: false, fire: false };
+        let touchX = null;
+        let touchFiring = false;
+        let showTouchOverlay = false;
+
+        // Pointer Hiding Logic via 'Esc' key toggle
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Escape') {
+                canvas.classList.add('show-cursor');
+            }
+        });
+
+        canvas.addEventListener('mousemove', () => {
+            if (canvas.classList.contains('show-cursor')) {
+                canvas.classList.remove('show-cursor');
+            }
+        });
+
+        // Keyboard listeners
+        window.addEventListener('keydown', (e) => {
+            audio.init();
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = true;
+            if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = true;
+            if (e.code === 'Space') { keys.fire = true; e.preventDefault(); }
+            if (e.code === 'Enter') handleStartOrPause();
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = false;
+            if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = false;
+            if (e.code === 'Space') keys.fire = false;
+        });
+
+        // Mouse & Touch Controls
+        function getCanvasRelativeX(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            return ((clientX - rect.left) / rect.width) * CANVAS_WIDTH;
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (gameState === STATES.PLAYING && player) {
+                const targetX = getCanvasRelativeX(e);
+                player.x = Math.max(player.width / 2, Math.min(CANVAS_WIDTH - player.width / 2, targetX));
+            }
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            audio.init();
+            if (gameState === STATES.TITLE || gameState === STATES.GAMEOVER) {
+                handleStartOrPause();
+            } else if (gameState === STATES.PLAYING) {
+                keys.fire = true;
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => { keys.fire = false; });
+
+        // Touch drag support on canvas
+        canvas.addEventListener('touchstart', (e) => {
+            audio.init();
+            if (gameState === STATES.TITLE || gameState === STATES.GAMEOVER) {
+                handleStartOrPause();
+                return;
+            }
+            touchX = getCanvasRelativeX(e);
+            keys.fire = true;
+        }, { passive: true });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (gameState === STATES.PLAYING && player) {
+                touchX = getCanvasRelativeX(e);
+                player.x = Math.max(player.width / 2, Math.min(CANVAS_WIDTH - player.width / 2, touchX));
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchend', () => { keys.fire = false; });
+
+        // On-screen Touch Button Controls setup
+        toggleTouchBtn.addEventListener('click', () => {
+            showTouchOverlay = !showTouchOverlay;
+            touchControls.classList.toggle('hidden', !showTouchOverlay);
+        });
+
+        document.getElementById('btn-left').addEventListener('touchstart', (e) => { e.preventDefault(); keys.left = true; });
+        document.getElementById('btn-left').addEventListener('touchend', (e) => { e.preventDefault(); keys.left = false; });
+        document.getElementById('btn-right').addEventListener('touchstart', (e) => { e.preventDefault(); keys.right = true; });
+        document.getElementById('btn-right').addEventListener('touchend', (e) => { e.preventDefault(); keys.right = false; });
+        document.getElementById('btn-fire').addEventListener('touchstart', (e) => { e.preventDefault(); keys.fire = true; audio.init(); });
+        document.getElementById('btn-fire').addEventListener('touchend', (e) => { e.preventDefault(); keys.fire = false; });
+
+        document.getElementById('btn-audio').addEventListener('click', () => {
+            audio.muted = !audio.muted;
+            document.getElementById('btn-audio').innerHTML = audio.muted ? '<i class="fa-solid fa-volume-xmark"></i>' : '<i class="fa-solid fa-volume-high"></i>';
+        });
+
+        document.getElementById('btn-pause').addEventListener('click', () => {
+            handleStartOrPause();
+        });
+
+        function handleStartOrPause() {
+            audio.init();
+            if (gameState === STATES.TITLE || gameState === STATES.GAMEOVER) {
+                resetGame();
+                gameState = STATES.PLAYING;
+                audio.playStageStart();
+            } else if (gameState === STATES.PLAYING) {
+                gameState = STATES.PAUSED;
+            } else if (gameState === STATES.PAUSED) {
+                gameState = STATES.PLAYING;
+            }
+        }
+
+        // Gamepad API Polling
+        function pollGamepad() {
+            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            let gpFound = false;
+
+            for (let i = 0; i < gamepads.length; i++) {
+                const gp = gamepads[i];
+                if (gp) {
+                    gpFound = true;
+                    gamepadStatusEl.innerText = gp.id.substring(0, 12).toUpperCase();
+                    gamepadStatusEl.classList.remove('text-gray-500');
+                    gamepadStatusEl.classList.add('text-green-400');
+
+                    // D-Pad or Left Joystick Axis 0
+                    const axisX = gp.axes[0];
+                    const dpadLeft = gp.buttons[14] && gp.buttons[14].pressed;
+                    const dpadRight = gp.buttons[15] && gp.buttons[15].pressed;
+
+                    if (axisX < -0.3 || dpadLeft) keys.left = true;
+                    else if (!keys.leftByKb) keys.left = false;
+
+                    if (axisX > 0.3 || dpadRight) keys.right = true;
+                    else if (!keys.rightByKb) keys.right = false;
+
+                    // Buttons: A (0), RT (7)
+                    const btnFire = (gp.buttons[0] && gp.buttons[0].pressed) || (gp.buttons[7] && gp.buttons[7].pressed);
+                    const btnStart = gp.buttons[9] && gp.buttons[9].pressed; // Start Button
+
+                    if (btnFire) {
+                        if (!keys.gamepadFireLast) {
+                            keys.fire = true;
+                            if (gameState === STATES.TITLE || gameState === STATES.GAMEOVER) handleStartOrPause();
+                        }
+                    } else {
+                        if (keys.gamepadFireLast) keys.fire = false;
+                    }
+                    keys.gamepadFireLast = btnFire;
+
+                    if (btnStart) {
+                        if (!keys.gamepadStartLast) handleStartOrPause();
+                        keys.gamepadStartLast = true;
+                    } else {
+                        keys.gamepadStartLast = false;
+                    }
+                    break;
+                }
+            }
+
+            if (!gpFound) {
+                gamepadStatusEl.innerText = "NO GAMEPAD";
+                gamepadStatusEl.classList.remove('text-green-400');
+                gamepadStatusEl.classList.add('text-gray-500');
+            }
+        }
+
+        // --- Starfield System ---
+        function initStarfield() {
+            starfield = [];
+            for (let i = 0; i < 80; i++) {
+                starfield.push({
+                    x: Math.random() * CANVAS_WIDTH,
+                    y: Math.random() * CANVAS_HEIGHT,
+                    size: Math.random() < 0.2 ? 2 : 1,
+                    speed: 0.5 + Math.random() * 1.5,
+                    color: ['#fff', '#ff0', '#0ff', '#f0f', '#aaa'][Math.floor(Math.random() * 5)]
+                });
+            }
+        }
+
+        function updateStarfield() {
+            starfield.forEach(star => {
+                star.y += star.speed;
+                if (star.y > CANVAS_HEIGHT) {
+                    star.y = 0;
+                    star.x = Math.random() * CANVAS_WIDTH;
+                }
+            });
+        }
+
+        function drawStarfield() {
+            starfield.forEach(star => {
+                ctx.fillStyle = star.color;
+                ctx.fillRect(Math.floor(star.x), Math.floor(star.y), star.size, star.size);
+            });
+        }
+
+        // --- Vector Pixel Sprite Renderer ---
+        // Helper to draw retro pixel art shapes manually using matrix pixel mapping
+        function drawPixelSprite(x, y, matrix, colorMap, scale = 2) {
+            const rows = matrix.length;
+            const cols = matrix[0].length;
+            const startX = Math.floor(x - (cols * scale) / 2);
+            const startY = Math.floor(y - (rows * scale) / 2);
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const char = matrix[r][c];
+                    if (char !== ' ') {
+                        ctx.fillStyle = colorMap[char] || '#fff';
+                        ctx.fillRect(startX + c * scale, startY + r * scale, scale, scale);
+                    }
+                }
+            }
+        }
+
+        // Sprite Matrices Definition
+        const SPRITES = {
+            PLAYER: {
+                matrix: [
+                    "    W    ",
+                    "   WWW   ",
+                    "   WWW   ",
+                    "  WWRWW  ",
+                    " WWW WWW ",
+                    "WWWWWWWWW",
+                    "WW R R WW",
+                    "W  R R  W"
+                ],
+                colors: { 'W': '#ffffff', 'R': '#ff2222' }
+            },
+            BUG: { // Yellow / Blue Bug Enemy
+                matrix: [
+                    "  YY  ",
+                    " YYYY ",
+                    "YBBBBY",
+                    "YBBBBY",
+                    " YYYY ",
+                    "Y M M Y",
+                    " Y   Y "
+                ],
+                colors: { 'Y': '#ffff00', 'B': '#0088ff', 'M': '#ff00ff' }
+            },
+            BUTTERFLY: { // Red / White Butterfly Enemy
+                matrix: [
+                    "  RR  ",
+                    " RWW1 ",
+                    "RRWWRR",
+                    "RRWWRR",
+                    " RRRR ",
+                    "R R R R",
+                    "R     R"
+                ],
+                colors: { 'R': '#ff3333', 'W': '#ffffff', '1': '#ffff00' }
+            },
+            BOSS_BLUE: { // Boss Galaga (Normal State - Green/Blue)
+                matrix: [
+                    "  GGGG  ",
+                    " GGGGGG ",
+                    "GGBCBBGG",
+                    "GGBCBBGG",
+                    " GGGGGG ",
+                    "G G  G G",
+                    "G      G"
+                ],
+                colors: { 'G': '#00ff66', 'B': '#0066ff', 'C': '#00ffff' }
+            },
+            BOSS_HIT: { // Boss Galaga (Damaged State - Blue/Red)
+                matrix: [
+                    "  RRRR  ",
+                    " RBBBBR ",
+                    "RBBBBBBR",
+                    "RBBBBBBR",
+                    " RBBBBR ",
+                    "R R  R R",
+                    "R      R"
+                ],
+                colors: { 'R': '#ff2222', 'B': '#3388ff' }
+            }
+        };
+
+        // --- Player Class ---
+        class Player {
+            constructor() {
+                this.x = CANVAS_WIDTH / 2;
+                this.y = CANVAS_HEIGHT - 40;
+                this.width = 18;
+                this.height = 16;
+                this.speed = 3.5;
+                this.cooldown = 0;
+                this.isDual = false; // Dual fighter state capability
+            }
+
+            update() {
+                if (keys.left) this.x -= this.speed;
+                if (keys.right) this.x += this.speed;
+
+                // Screen Boundary
+                this.x = Math.max(this.width / 2, Math.min(CANVAS_WIDTH - this.width / 2, this.x));
+
+                // Shooting
+                if (this.cooldown > 0) this.cooldown--;
+
+                if (keys.fire && this.cooldown === 0) {
+                    this.shoot();
+                    this.cooldown = 12; // Fire rate limit
+                }
+            }
+
+            shoot() {
+                if (playerBullets.length >= 4) return; // Limit total active player shots
+
+                audio.playLaser();
+                if (this.isDual) {
+                    playerBullets.push(new Bullet(this.x - 6, this.y - 8, -6, true));
+                    playerBullets.push(new Bullet(this.x + 6, this.y - 8, -6, true));
+                } else {
+                    playerBullets.push(new Bullet(this.x, this.y - 8, -6, true));
+                }
+            }
+
+            draw() {
+                drawPixelSprite(this.x, this.y, SPRITES.PLAYER.matrix, SPRITES.PLAYER.colors);
+                if (this.isDual) {
+                    drawPixelSprite(this.x - 16, this.y, SPRITES.PLAYER.matrix, SPRITES.PLAYER.colors);
+                }
+            }
+        }
+
+        // --- Bullet Class ---
+        class Bullet {
+            constructor(x, y, vy, isPlayer = false) {
+                this.x = x;
+                this.y = y;
+                this.vy = vy;
+                this.isPlayer = isPlayer;
+                this.width = 2;
+                this.height = 6;
+            }
+
+            update() {
+                this.y += this.vy;
+            }
+
+            draw() {
+                ctx.fillStyle = this.isPlayer ? '#ffff00' : '#ff3333';
+                ctx.fillRect(Math.floor(this.x - 1), Math.floor(this.y - 3), this.width, this.height);
+            }
+        }
+
+        // --- Enemy Class ---
+        class Enemy {
+            constructor(gridRow, gridCol, type) {
+                this.gridRow = gridRow;
+                this.gridCol = gridCol;
+                this.type = type; // 'BUG', 'BUTTERFLY', 'BOSS'
+
+                // Target position in standard matrix formation
+                this.targetX = 60 + gridCol * 26;
+                this.targetY = 50 + gridRow * 24;
+
+                this.x = CANVAS_WIDTH / 2;
+                this.y = -20;
+                this.width = 16;
+                this.height = 14;
+
+                this.state = 'ENTERING'; // ENTERING, FORMATION, DIVING, RETURNING
+                this.hp = (type === 'BOSS') ? 2 : 1;
+                this.scoreValue = (type === 'BUG') ? 100 : (type === 'BUTTERFLY') ? 80 : 150;
+
+                // Bezier Curve path parameters for curved entrance
+                this.pathProgress = 0;
+                this.pathSpeed = 0.015 + Math.random() * 0.005;
+                this.pathPoints = this.generateEntrancePath();
+
+                // Dive Bombing properties
+                this.diveAngle = 0;
+                this.diveSpeed = 2 + stage * 0.3;
+            }
+
+            generateEntrancePath() {
+                const side = this.gridCol % 2 === 0 ? -50 : CANVAS_WIDTH + 50;
+                return [
+                    { x: side, y: 100 + this.gridRow * 30 },
+                    { x: CANVAS_WIDTH / 2 + (side < 0 ? 100 : -100), y: 250 },
+                    { x: CANVAS_WIDTH / 2 + (side < 0 ? -80 : 80), y: 180 },
+                    { x: this.targetX, y: this.targetY }
+                ];
+            }
+
+            update() {
+                if (this.state === 'ENTERING') {
+                    this.pathProgress += this.pathSpeed;
+                    if (this.pathProgress >= 1) {
+                        this.pathProgress = 1;
+                        this.state = 'FORMATION';
+                        this.x = this.targetX;
+                        this.y = this.targetY;
+                    } else {
+                        // Cubic Bezier interpolation
+                        const p = this.pathPoints;
+                        const t = this.pathProgress;
+                        const cx = 3 * (p[1].x - p[0].x);
+                        const bx = 3 * (p[2].x - p[1].x) - cx;
+                        const ax = p[3].x - p[0].x - cx - bx;
+
+                        const cy = 3 * (p[1].y - p[0].y);
+                        const by = 3 * (p[2].y - p[1].y) - cy;
+                        const ay = p[3].y - p[0].y - cy - by;
+
+                        this.x = ax * Math.pow(t, 3) + bx * Math.pow(t, 2) + cx * t + p[0].x;
+                        this.y = ay * Math.pow(t, 3) + by * Math.pow(t, 2) + cy * t + p[0].y;
+                    }
+                } else if (this.state === 'FORMATION') {
+                    // Slight sway effect in formation
+                    const sway = Math.sin(Date.now() * 0.003) * 6;
+                    this.x = this.targetX + sway;
+                    this.y = this.targetY;
+
+                    // Random chance to dive
+                    if (formationComplete && Math.random() < 0.0008 * stage) {
+                        this.startDive();
+                    }
+                } else if (this.state === 'DIVING') {
+                    this.y += this.diveSpeed;
+                    this.x += Math.sin(this.diveAngle) * 2;
+                    this.diveAngle += 0.05;
+
+                    // Enemy shooting during dive
+                    if (Math.random() < 0.02 && this.y < CANVAS_HEIGHT - 100) {
+                        enemyBullets.push(new Bullet(this.x, this.y + 8, 3.5 + stage * 0.2, false));
+                    }
+
+                    // Reset if off-screen bottom
+                    if (this.y > CANVAS_HEIGHT + 20) {
+                        this.y = -20;
+                        this.state = 'RETURNING';
+                    }
+                } else if (this.state === 'RETURNING') {
+                    // Move back to target formation spot from top
+                    this.y += 2;
+                    if (this.y >= this.targetY) {
+                        this.state = 'FORMATION';
+                    }
+                }
+            }
+
+            startDive() {
+                this.state = 'DIVING';
+                this.diveAngle = Math.atan2((player ? player.x : CANVAS_WIDTH / 2) - this.x, CANVAS_HEIGHT - this.y);
+                audio.playEnemyDive();
+            }
+
+            draw() {
+                let spriteData;
+                if (this.type === 'BUG') spriteData = SPRITES.BUG;
+                else if (this.type === 'BUTTERFLY') spriteData = SPRITES.BUTTERFLY;
+                else if (this.type === 'BOSS') spriteData = (this.hp === 2) ? SPRITES.BOSS_BLUE : SPRITES.BOSS_HIT;
+
+                drawPixelSprite(this.x, this.y, spriteData.matrix, spriteData.colors);
+            }
+        }
+
+        // --- Particle & Explosions System ---
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+                this.color = color;
+                this.life = 1.0;
+                this.decay = 0.03 + Math.random() * 0.03;
+                this.size = Math.random() < 0.5 ? 2 : 3;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+            }
+
+            draw() {
+                ctx.globalAlpha = Math.max(0, this.life);
+                ctx.fillStyle = this.color;
+                ctx.fillRect(Math.floor(this.x), Math.floor(this.y), this.size, this.size);
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        class FloatingText {
+            constructor(x, y, text, color = '#ffffff') {
+                this.x = x;
+                this.y = y;
+                this.text = text;
+                this.color = color;
+                this.life = 1.0;
+            }
+
+            update() {
+                this.y -= 0.5;
+                this.life -= 0.02;
+            }
+
+            draw() {
+                ctx.globalAlpha = Math.max(0, this.life);
+                ctx.fillStyle = this.color;
+                ctx.font = '8px "Press Start 2P"';
+                ctx.fillText(this.text, this.x - 8, this.y);
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        function createExplosion(x, y, color = '#ff5500', count = 12) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        // --- Wave & Enemy Formation Generator ---
+        function spawnWave() {
+            enemies = [];
+            formationComplete = false;
+
+            // Matrix Layout: 1 Row Bosses, 2 Rows Butterflies, 2 Rows Bugs
+            const layout = [
+                { type: 'BOSS', rows: 1 },
+                { type: 'BUTTERFLY', rows: 2 },
+                { type: 'BUG', rows: 2 }
+            ];
+
+            let currentRow = 0;
+            layout.forEach(group => {
+                for (let r = 0; r < group.rows; r++) {
+                    const cols = (group.type === 'BOSS') ? 4 : 10;
+                    const colOffset = (group.type === 'BOSS') ? 3 : 0;
+                    for (let c = 0; c < cols; c++) {
+                        enemies.push(new Enemy(currentRow, c + colOffset, group.type));
+                    }
+                    currentRow++;
+                }
+            });
+        }
+
+        // --- Collision Detection Helper ---
+        function checkCollision(rect1, rect2) {
+            return (
+                rect1.x - rect1.width / 2 < rect2.x + rect2.width / 2 &&
+                rect1.x + rect1.width / 2 > rect2.x - rect2.width / 2 &&
+                rect1.y - rect1.height / 2 < rect2.y + rect2.height / 2 &&
+                rect1.y + rect1.height / 2 > rect2.y - rect2.height / 2
+            );
+        }
+
+        // --- Reset Game & Lives ---
+        function resetGame() {
+            score = 0;
+            stage = 1;
+            lives = 3;
+            playerBullets = [];
+            enemyBullets = [];
+            particles = [];
+            floatingTexts = [];
+            player = new Player();
+            updateUI();
+            spawnWave();
+        }
+
+        function updateUI() {
+            scoreEl.innerText = score.toString().padStart(2, '0');
+            stageEl.innerText = `STAGE ${stage}`;
+            if (score > highscore) {
+                highscore = score;
+                highscoreEl.innerText = highscore.toString().padStart(2, '0');
+                localStorage.setItem('galaga_highscore', highscore);
+            }
+
+            // Render Lives Icons
+            livesContainer.innerHTML = '';
+            for (let i = 0; i < lives - 1; i++) {
+                const lifeIcon = document.createElement('div');
+                lifeIcon.className = 'w-3 h-3 bg-white border border-red-500 clip-ship';
+                lifeIcon.style.clipPath = 'polygon(50% 0%, 0% 100%, 100% 100%)';
+                livesContainer.appendChild(lifeIcon);
+            }
+        }
+
+        // --- Core Game Loop Functions ---
+        function update() {
+            pollGamepad();
+            updateStarfield();
+
+            if (gameState !== STATES.PLAYING) return;
+
+            // Check if wave cleared
+            if (enemies.length === 0) {
+                stage++;
+                updateUI();
+                spawnWave();
+                audio.playStageStart();
+                return;
+            }
+
+            // Check if formation finished entering
+            if (!formationComplete) {
+                formationComplete = enemies.every(e => e.state === 'FORMATION');
+            }
+
+            // Update Player
+            if (player) player.update();
+
+            // Update Player Bullets
+            playerBullets.forEach((bullet, bIndex) => {
+                bullet.update();
+                if (bullet.y < 0) {
+                    playerBullets.splice(bIndex, 1);
+                    return;
+                }
+
+                // Check collision with Enemies
+                enemies.forEach((enemy, eIndex) => {
+                    if (checkCollision(bullet, enemy)) {
+                        playerBullets.splice(bIndex, 1);
+                        enemy.hp--;
+
+                        if (enemy.hp <= 0) {
+                            // Enemy Destroyed
+                            createExplosion(enemy.x, enemy.y, '#ffff00', 16);
+                            audio.playExplosion(enemy.type === 'BOSS');
+
+                            const points = enemy.state === 'DIVING' ? enemy.scoreValue * 2 : enemy.scoreValue;
+                            score += points;
+                            floatingTexts.push(new FloatingText(enemy.x, enemy.y, points.toString(), '#55ffff'));
+                            enemies.splice(eIndex, 1);
+                            updateUI();
+                        } else {
+                            // Boss Hit (Damage State)
+                            audio.playExplosion(false);
+                            createExplosion(enemy.x, enemy.y, '#00ffff', 6);
+                        }
+                    }
+                });
+            });
+
+            // Update Enemy Bullets
+            enemyBullets.forEach((bullet, index) => {
+                bullet.update();
+                if (bullet.y > CANVAS_HEIGHT) {
+                    enemyBullets.splice(index, 1);
+                    return;
+                }
+
+                // Hit Player
+                if (player && checkCollision(bullet, player)) {
+                    enemyBullets.splice(index, 1);
+                    handlePlayerHit();
+                }
+            });
+
+            // Update Enemies
+            enemies.forEach(enemy => {
+                enemy.update();
+
+                // Player Direct Collision with Enemy
+                if (player && checkCollision(enemy, player)) {
+                    createExplosion(enemy.x, enemy.y, '#ffaa00', 12);
+                    enemies.splice(enemies.indexOf(enemy), 1);
+                    handlePlayerHit();
+                }
+            });
+
+            // Update Particles & Floating Texts
+            particles.forEach((p, i) => {
+                p.update();
+                if (p.life <= 0) particles.splice(i, 1);
+            });
+
+            floatingTexts.forEach((ft, i) => {
+                ft.update();
+                if (ft.life <= 0) floatingTexts.splice(i, 1);
+            });
+        }
+
+        function handlePlayerHit() {
+            createExplosion(player.x, player.y, '#ff0000', 25);
+            audio.playExplosion(true);
+            lives--;
+            updateUI();
+
+            if (lives <= 0) {
+                gameState = STATES.GAMEOVER;
+            } else {
+                // Respawn Player
+                player = new Player();
+            }
+        }
+
+        // --- Render Loop ---
+        function render() {
+            // Clear Screen
+            ctx.fillStyle = '#000005';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // Draw Background Starfield
+            drawStarfield();
+
+            if (gameState === STATES.TITLE) {
+                // Title Screen Overlay
+                ctx.fillStyle = '#ff0000';
+                ctx.font = '16px "Press Start 2P"';
+                ctx.textAlign = 'center';
+                ctx.fillText('WEBLAGA', CANVAS_WIDTH / 2, 120);
+
+                ctx.fillStyle = '#ffff00';
+                ctx.font = '10px "Press Start 2P"';
+                ctx.fillText('ARCADE CLONE', CANVAS_WIDTH / 2, 145);
+
+                drawPixelSprite(CANVAS_WIDTH / 2, 210, SPRITES.PLAYER.matrix, SPRITES.PLAYER.colors, 3);
+                drawPixelSprite(CANVAS_WIDTH / 2 - 50, 260, SPRITES.BUG.matrix, SPRITES.BUG.colors, 2);
+                drawPixelSprite(CANVAS_WIDTH / 2, 260, SPRITES.BUTTERFLY.matrix, SPRITES.BUTTERFLY.colors, 2);
+                drawPixelSprite(CANVAS_WIDTH / 2 + 50, 260, SPRITES.BOSS_BLUE.matrix, SPRITES.BOSS_BLUE.colors, 2);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '10px "Press Start 2P"';
+                ctx.fillText('PRESS ENTER / TAP', CANVAS_WIDTH / 2, 340);
+                ctx.fillText('TO START GAME', CANVAS_WIDTH / 2, 360);
+
+                ctx.fillStyle = '#00ffff';
+                ctx.font = '8px "Press Start 2P"';
+                ctx.fillText('2026 RETRO EDITION', CANVAS_WIDTH / 2, 420);
+                return;
+            }
+
+            // Draw Gameplay Entities
+            enemies.forEach(enemy => enemy.draw());
+            if (player) player.draw();
+            playerBullets.forEach(bullet => bullet.draw());
+            enemyBullets.forEach(bullet => bullet.draw());
+            particles.forEach(p => p.draw());
+            floatingTexts.forEach(ft => ft.draw());
+
+            // Paused Overlay
+            if (gameState === STATES.PAUSED) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                ctx.fillStyle = '#ffff00';
+                ctx.font = '16px "Press Start 2P"';
+                ctx.textAlign = 'center';
+                ctx.fillText('PAUSED', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+            }
+
+            // Game Over Overlay
+            if (gameState === STATES.GAMEOVER) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                ctx.fillStyle = '#ff2222';
+                ctx.font = '18px "Press Start 2P"';
+                ctx.textAlign = 'center';
+                ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '10px "Press Start 2P"';
+                ctx.fillText(`FINAL SCORE: ${score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
+
+                ctx.fillStyle = '#ffff00';
+                ctx.fillText('PRESS ENTER / TAP', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 70);
+                ctx.fillText('TO RESTART', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 90);
+            }
+        }
+
+        // --- Main Game Loop ---
+        initStarfield();
+
+        function gameLoop() {
+            update();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.onload = function() {
+            gameLoop();
+        };
+
+    </script>
+</body>
+</html>
